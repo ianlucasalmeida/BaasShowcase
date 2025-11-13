@@ -1,109 +1,105 @@
 import React, { useState } from 'react';
-import { View, Text, Button, StyleSheet, Image, Alert } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
-import { supabase } from '../config/supabaseConfig'; // <-- Importa o Supabase
-import * as FileSystem from 'expo-file-system'; // <-- Para ler o arquivo
-import { decode } from 'base-64'; // <-- Para decodificar
+import { View, Text, Button, StyleSheet, Alert } from 'react-native';
+import { supabase } from '../config/supabaseConfig'; 
+import { auth } from '../config/firebaseConfig'; 
+import { decode } from 'base-64'; // <--- 1. IMPORTANTE: Importe o decode
 
-// Polyfill para o Supabase funcionar com Base64
+// 2. IMPORTANTE: Adicione este Polyfill para o Supabase funcionar
 if (typeof atob === 'undefined') {
   global.atob = decode;
 }
 
-const StorageDemoScreen = () => {
-  const [imageUri, setImageUri] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+const SupabaseDemoScreen = () => {
+  const [loading, setLoading] = useState(false);
+  const [profileText, setProfileText] = useState('');
 
-  const selectImage = async () => {
-    let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 1,
+  // 1. REGISTRA USUÁRIO NO SUPABASE AUTH (sincronizando)
+  const syncUser = async () => {
+    const user = auth.currentUser;
+    if (!user || !user.email) {
+      Alert.alert("Erro", "Você precisa estar logado no Firebase primeiro.");
+      return;
+    }
+
+    setLoading(true);
+    
+    // Tenta criar o usuário no Supabase
+    const { error } = await supabase.auth.signUp({
+      email: user.email,
+      password: 'password_secreto_para_teste', 
     });
-
-    if (!result.canceled) {
-      setImageUri(result.assets[0].uri);
-      setDownloadUrl(null); // Limpa a imagem anterior
+    
+    setLoading(false);
+    
+    if (error) {
+      // Se o usuário já existe, não é exatamente um erro para nossa demo
+      if (error.message.includes("already registered")) {
+        Alert.alert("Info", "Usuário já sincronizado no Supabase.");
+      } else {
+        Alert.alert("Erro ao Sincronizar", error.message);
+      }
+    } else {
+      Alert.alert("Sucesso", "Usuário sincronizado com Supabase Auth.");
     }
   };
-
-  const uploadImage = async () => {
-    if (!imageUri) return;
-    setUploading(true);
-
-    try {
-      // 1. Lê o arquivo de imagem do celular como Base64
-      const base64 = await FileSystem.readAsStringAsync(imageUri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
+  
+  // 2. TENTA LER O PERFIL (DEMO RLS)
+  const fetchProfile = async () => {
+    setLoading(true);
+    
+    // Consulta SQL simples: SELECT * FROM profiles
+    // O RLS do Supabase vai filtrar os resultados automaticamente
+    const { data, error } = await supabase
+      .from('profiles') // Certifique-se de ter criado essa tabela no Supabase
+      .select('*'); 
       
-      const filename = imageUri.substring(imageUri.lastIndexOf('/') + 1);
-      const fileExt = filename.split('.').pop();
-      const contentType = `image/${fileExt}`;
-      
-      // 2. Faz o upload para o Supabase Storage
-      const { data, error: uploadError } = await supabase.storage
-        .from('uploads') // O nome do seu bucket
-        .upload(filename, decode(base64), { // Decodifica o Base64
-          contentType,
-          upsert: true, // Sobrescreve se já existir
-        });
-
-      if (uploadError) {
-        throw uploadError;
-      }
-      
-      // 3. Pega a URL pública da imagem que acabamos de enviar
-      const { data: urlData } = supabase.storage
-        .from('uploads')
-        .getPublicUrl(data.path);
-
-      setDownloadUrl(urlData.publicUrl);
-      Alert.alert("Sucesso", "Upload para o Supabase concluído!");
-      
-    } catch (error: any) {
-      Alert.alert("Erro no Upload (Supabase)", error.message);
-    } finally {
-      setUploading(false);
+    setLoading(false);
+    
+    if (error) {
+      Alert.alert("Erro ao Buscar (Supabase)", error.message);
+    } else if (data && data.length > 0) {
+      setProfileText(JSON.stringify(data, null, 2));
+    } else {
+      setProfileText("Nenhum dado retornado. (O RLS pode estar bloqueando ou a tabela está vazia)");
     }
   };
 
   return (
     <View style={styles.container}>
       <Text style={styles.info}>
-        Selecione uma imagem e faça o upload para o **Supabase Storage**.
+        Bloco 2: Supabase (SQL + RLS)
       </Text>
-      <Button title="Selecionar Imagem" onPress={selectImage} />
+      <Text style={styles.info}>
+        Esta tela demonstra a sincronização e consulta SQL segura.
+      </Text>
       
-      {imageUri && (
-        <Image source={{ uri: imageUri }} style={styles.image} />
-      )}
-      
-      {uploading && (
-        <Text style={styles.progress}>Enviando... (Sem % no Supabase)</Text>
-      )}
+      <View style={styles.buttonContainer}>
+        <Button 
+          title="1. Sincronizar Auth (Simulação)" 
+          onPress={syncUser} 
+          disabled={loading} 
+        />
+      </View>
+      <View style={styles.buttonContainer}>
+        <Button 
+          title="2. Buscar Dados (Demo RLS)" 
+          onPress={fetchProfile} 
+          disabled={loading} 
+        />
+      </View>
 
-      {imageUri && !uploading && (
-        <Button title="Fazer Upload da Imagem" onPress={uploadImage} />
-      )}
-
-      {downloadUrl && (
-        <View>
-          <Text style={styles.info}>Imagem no Supabase Storage:</Text>
-          <Image source={{ uri: downloadUrl }} style={styles.image} />
-        </View>
+      {profileText !== '' && (
+        <Text style={styles.result}>Resultado: {profileText}</Text>
       )}
     </View>
   );
 };
 
-// ... (Estilos - são os mesmos de antes)
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, alignItems: 'center' },
-  info: { textAlign: 'center', padding: 10, marginVertical: 10 },
-  image: { width: 200, height: 200, marginVertical: 20, borderWidth: 1, borderColor: '#ccc' },
-  progress: { fontSize: 18, marginVertical: 10 }
+  container: { flex: 1, padding: 20 },
+  info: { textAlign: 'center', padding: 10, backgroundColor: '#eee', borderRadius: 5, marginBottom: 10, fontSize: 12 },
+  buttonContainer: { marginVertical: 10 },
+  result: { marginTop: 20, fontSize: 12, fontFamily: 'monospace', padding: 10, backgroundColor: '#f0f0f0' }
 });
 
-export default StorageDemoScreen;
+export default SupabaseDemoScreen;

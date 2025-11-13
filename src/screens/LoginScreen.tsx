@@ -1,22 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, Alert, Platform } from 'react-native';
-// --- IMPORTAÇÕES DO FIREBASE ---
+import React, { useState } from 'react';
+import { View, Text, TextInput, Button, StyleSheet, Alert } from 'react-native';
+// Importa apenas o necessário para o login com E-mail
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../config/firebaseConfig';
-import { GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
 
-// --- IMPORTAÇÕES DO GOOGLE SIGNIN ---
-import {
-  GoogleSignin,
-  statusCodes,
-} from '@react-native-google-signin/google-signin';
-
-// --- IMPORTAÇÕES DE NAVEGAÇÃO ---
+// Importa os tipos de navegação
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AuthStackParamList } from '../navigation/RootNavigator';
-
-// A chave agora vem do process.env (graças ao .env)
-const WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
 
 type LoginScreenProps = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 
@@ -25,60 +15,19 @@ const LoginScreen = ({ navigation }: LoginScreenProps) => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Configura o Google Sign-In uma vez
-  useEffect(() => {
-    if (!WEB_CLIENT_ID) {
-      console.error("Variável de ambiente EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID não definida!");
-      return;
-    }
-    GoogleSignin.configure({
-      webClientId: WEB_CLIENT_ID,
-    });
-  }, []);
-
-  // --- LÓGICA DE LOGIN COM E-MAIL ---
+  // Lógica de Login com E-mail (única opção agora)
   const handleLogin = async () => {
-    // ... (lógica de login com e-mail/senha continua a mesma)
     if (email === '' || password === '') {
       Alert.alert("Erro", "Por favor, preencha todos os campos.");
       return;
     }
     setLoading(true);
     try {
+      // Função do Bloco 1: signInWithEmailAndPassword
       await signInWithEmailAndPassword(auth, email, password);
+      // O `onAuthStateChanged` no RootNavigator cuidará da transição de tela
     } catch (error: any) {
       Alert.alert("Erro no Login", error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // --- LÓGICA DE LOGIN COM GOOGLE ---
-  const handleGoogleLogin = async () => {
-    setLoading(true);
-    try {
-      // 1. Inicia o fluxo de login nativo do Google
-      await GoogleSignin.hasPlayServices();
-      const { idToken } = await GoogleSignin.signIn();
-
-      if (!idToken) {
-        throw new Error("Não foi possível obter o idToken do Google");
-      }
-
-      // 2. Cria a credencial do Firebase com o idToken do Google
-      const googleCredential = GoogleAuthProvider.credential(idToken);
-
-      // 3. Faz o login no Firebase com essa credencial
-      await signInWithCredential(auth, googleCredential);
-      
-    } catch (error: any) {
-      if (error.code === statusCodes.SIGN_IN_CANCELLED) {
-        // usuário cancelou o fluxo
-      } else if (error.code === statusCodes.IN_PROGRESS) {
-        // operação já em progresso
-      } else {
-        Alert.alert("Erro no Login com Google", error.message);
-      }
     } finally {
       setLoading(false);
     }
@@ -88,18 +37,6 @@ const LoginScreen = ({ navigation }: LoginScreenProps) => {
     <View style={styles.container}>
       <Text style={styles.title}>Login</Text>
       
-      {/* Botão de Login com Google */}
-      <View style={styles.buttonContainer}>
-        <Button
-          title="Entrar com Google"
-          onPress={handleGoogleLogin}
-          disabled={loading}
-          color="#db4437"
-        />
-      </View>
-
-      <Text style={styles.separator}>--- ou ---</Text>
-
       {/* Formulário de E-mail/Senha */}
       <TextInput
         style={styles.input}
@@ -118,11 +55,13 @@ const LoginScreen = ({ navigation }: LoginScreenProps) => {
       />
       <View style={styles.buttonContainer}>
         <Button 
-          title={loading ? "Entrando..." : "Entrar com Email"} 
+          title={loading ? "Entrando..." : "Entrar"} 
           onPress={handleLogin} 
           disabled={loading} 
         />
       </View>
+      
+      {/* Botão de Registro */}
       <View style={styles.buttonContainer}>
         <Button
           title="Não tem conta? Crie uma"
@@ -134,6 +73,7 @@ const LoginScreen = ({ navigation }: LoginScreenProps) => {
   );
 };
 
+// Estilos
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -158,11 +98,6 @@ const styles = StyleSheet.create({
   buttonContainer: {
     marginVertical: 5,
   },
-  separator: {
-    marginVertical: 15,
-    textAlign: 'center',
-    color: 'gray',
-  }
 });
 
 export default LoginScreen;
